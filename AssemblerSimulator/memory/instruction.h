@@ -1,10 +1,8 @@
-#include <stdint.h>
-#include "../cpu/mmu.h"
-#include "../cpu/register.h"
+#ifndef INSTRUCTION_H
+#define INSTRUCTION_H
 
-// memory
-#define MM_LEN 1000
-uint64_t mm[MM_LEN];
+#include <stdint.h>
+#include "register.h"
 
 // operator type
 typedef enum OP {
@@ -49,11 +47,8 @@ void add_reg_reg_handler(uint64_t src, uint64_t dst);
 // pointer pointing to the function
 #define NUM_INSTRTYPE 30
 typedef void (*handler_t)(uint64_t, uint64_t);
-handler_t handler_table[NUM_INSTRTYPE] = {
-    push_reg_handler,
-    pop_reg_handler,
-    mov_reg_reg_handler,
-    add_reg_reg_handler,
-};
+extern handler_t handler_table[NUM_INSTRTYPE];
 
 void instruction_cycle();
+
+#endif

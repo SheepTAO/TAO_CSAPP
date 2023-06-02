@@ -1,6 +1,7 @@
-#include <stdint.h>
+#ifndef REGISTER_H
+#define REGISTER_H
 
-#pragma once
+#include <stdint.h>
 
 typedef struct REG_STRUCT {
     union
@@ -24,4 +25,6 @@ typedef struct REG_STRUCT {
     uint64_t rip;
 } reg_t;
 
-reg_t reg;
+static reg_t reg;
+
+#endif

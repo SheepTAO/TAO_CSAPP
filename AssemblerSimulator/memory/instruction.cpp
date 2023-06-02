@@ -1,5 +1,12 @@
 #include "instruction.h"
 
+handler_t handler_table[NUM_INSTRTYPE] = {
+    push_reg_handler,
+    pop_reg_handler,
+    mov_reg_reg_handler,
+    add_reg_reg_handler,
+};
+
 static uint64_t decode_od(od_t od) {
     if (od.type == IMM) {
         // org
@@ -41,13 +48,15 @@ static uint64_t decode_od(od_t od) {
                 vaddr = od.imm + *od.reg1 + *od.reg2 * od.scal;
                 break;
         }
+
+        return vaddr;
     }
 }
 
 void push_reg_handler(uint64_t src, uint64_t dst){
     reg.rsp -= 1;
     reg.rsp = *(uint64_t *)src;
-};
+}
 
 void pop_reg_handler(uint64_t src, uint64_t dst) {
     

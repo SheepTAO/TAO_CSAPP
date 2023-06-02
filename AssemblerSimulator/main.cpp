@@ -1,8 +1,9 @@
 #include <iostream>
-#include "cpu/register.h"
-#include "memory/dram.h"
-#include "disk/elf.h"
-#include "memory/instruction.h"
+#include "register.h"
+#include "mmu.h"
+#include "elf.h"
+#include "instruction.h"
+#include "dram.h"
 
 int main()
 {
@@ -42,14 +43,14 @@ int main()
     rbp            0x7fffffffd930      0x7fffffffd930
     rsp            0x7fffffffd910      0x7fffffffd910
     */
-    mm[va2pa(0x7fffffffd930)] = 0x1;                // rbp
-    mm[va2pa(0x7fffffffd928)] = 0x7ffff7e93754;
-    mm[va2pa(0x7fffffffd920)] = 0xabcd;
-    mm[va2pa(0x7fffffffd918)] = 0x12340000;
-    mm[va2pa(0x7fffffffd910)] = 0xf7f9c0c8;         // rsp
+    write64bits_dram(va2pa(0x7fffffffd930), 0x1);               // rbp
+    write64bits_dram(va2pa(0x7fffffffd928), 0x7ffff7e93754);
+    write64bits_dram(va2pa(0x7fffffffd920), 0xabcd);
+    write64bits_dram(va2pa(0x7fffffffd918), 0x12340000);
+    write64bits_dram(va2pa(0x7fffffffd910), 0xf7f9c0c8);        // rsp
 
     // run inst
-    for (uint i = 0; i < 15; ++i) {
+    for (uint i = 0; i < 0; ++i) {
         instruction_cycle();
     }
 
@@ -70,11 +71,11 @@ int main()
         std::cout << "register mismatch" << std::endl;
     }
 
-    match = match && (mm[va2pa(0x7fffffffd930)] == 0x1);                // rbp
-    match = match && (mm[va2pa(0x7fffffffd928)] == 0x1234abcd);
-    match = match && (mm[va2pa(0x7fffffffd920)] == 0xabcd);
-    match = match && (mm[va2pa(0x7fffffffd918)] == 0x12340000);
-    match = match && (mm[va2pa(0x7fffffffd910)] == 0xf7f9c0c8);         // rsp
+    match = match && (read64bits_dram(va2pa(0x7fffffffd930)) == 0x1);                // rbp
+    match = match && (read64bits_dram(va2pa(0x7fffffffd928)) == 0x1234abcd);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd920)) == 0xabcd);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd918)) == 0x12340000);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd910)) == 0xf7f9c0c8);         // rsp
 
     if (match) {
         std::cout << "memory match" << std::endl;

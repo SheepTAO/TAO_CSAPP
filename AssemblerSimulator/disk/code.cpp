@@ -1,7 +1,7 @@
 #include "elf.h"
 
 inst_t program[15] = {
-    // uint64_t add(uint64_t, uint64_t)
+     // uint64_t add(uint64_t, uint64_t)
     {
         PUSH_REG,
         { REG, 0, 0, (uint64_t *)&reg.rbp, nullptr },
@@ -83,7 +83,7 @@ inst_t program[15] = {
     },
     {
         CALL,
-        { IMM, (uint64_t)&program[0], 0, nullptr, nullptr},
+        { IMM, (int64_t)&program[0], 0, nullptr, nullptr},
         { EMPTY, 0, 0, nullptr, nullptr},
         "call <add>"
     },
