@@ -49,12 +49,19 @@ int main()
     write64bits_dram(va2pa(0x7fffffffd918), 0x12340000);
     write64bits_dram(va2pa(0x7fffffffd910), 0xf7f9c0c8);        // rsp
 
+    print_register();
+    print_stack();
+
     // run inst
-    for (uint i = 0; i < 0; ++i) {
+    for (uint i = 0; i < 15; ++i) {
+        printf("\n");
         instruction_cycle();
+        print_register();
+        print_stack();
     }
 
     // verify
+    printf("[All done]\n");
     bool match = 1;
     match = match && (reg.rax == 0x1234abcd);
     match = match && (reg.rbx == 0x0);

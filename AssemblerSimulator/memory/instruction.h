@@ -42,7 +42,12 @@ typedef struct INSTRUCT_STRUCT {
 void push_reg_handler(uint64_t src, uint64_t dst);
 void pop_reg_handler(uint64_t src, uint64_t dst);
 void mov_reg_reg_handler(uint64_t src, uint64_t dst);
+void mov_reg_mem_handler(uint64_t src, uint64_t dst);
+void mov_mem_reg_handler(uint64_t src, uint64_t dst);
 void add_reg_reg_handler(uint64_t src, uint64_t dst);
+void call_handler(uint64_t src, uint64_t dst);
+void ret_handler(uint64_t src, uint64_t dst);
+
 
 // pointer pointing to the function
 #define NUM_INSTRTYPE 30

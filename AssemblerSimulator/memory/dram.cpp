@@ -32,18 +32,33 @@ void write64bits_dram(uint64_t paddr, uint64_t data) {
 }
 
 void print_register() {
-    printf("rax = %16lx\trbx = %16lx\trcx = %16lx\trdx = %16lx\n",
+    printf("rax = %16lx\trbx = %16lx\nrcx = %16lx\trdx = %16lx\n",
         reg.rax, reg.rbx, reg.rcx, reg.rdx);
-    printf("rsi = %16lx\trdi = %16lx\trbp = %16lx\trsp = %16lx\n",
+    printf("rsi = %16lx\trdi = %16lx\nrbp = %16lx\trsp = %16lx\n",
         reg.rsi, reg.rdi, reg.rbp, reg.rsp);
     printf("rip = %16lx\n", reg.rip);
 }
 
 void print_stack() {
-    uint64_t rsp = va2pa(reg.rsp);
-    uint64_t rbp = va2pa(reg.rbp);
+    int n = 10;
 
-    while (rsp < rbp) {
-        
+    uint64_t *low = (uint64_t *)&mm[va2pa(reg.rsp)];
+    uint64_t *high = (uint64_t *)&mm[va2pa(reg.rbp)];
+    uint64_t *origHigh = high, *origLow = low;
+
+    uint64_t rspStart = reg.rbp;
+
+    while (low <= high) {
+        printf("0x%016lx : %16lx", rspStart, (uint64_t)*high);
+
+        if (high == origHigh) {
+            printf(" <=== rbp");
+        } else if (high == origLow) {
+            printf (" <=== rsp");
+        }
+        --high;
+        rspStart -= 8;
+
+        printf("\n");
     }
 }

@@ -10,9 +10,9 @@ inst_t program[15] = {
     },
     {
         MOV_REG_REG,
-        { REG, 0, 0, (uint64_t *)&reg.rdx, nullptr },
-        { REG, 0, 0, (uint64_t *)&reg.rsi, nullptr },
-        "mov %rdx, %rsi"
+        { REG, 0, 0, (uint64_t *)&reg.rsp, nullptr },
+        { REG, 0, 0, (uint64_t *)&reg.rbp, nullptr },
+        "mov %rsp, %rbp"
     },
     {
         MOV_REG_MEM,
@@ -52,7 +52,7 @@ inst_t program[15] = {
     },
     {
         MOV_MEM_REG,
-        { MM_IMM_REG, -0x8, 0, (uint64_t *)&reg.rax, nullptr },
+        { MM_IMM_REG, -0x8, 0, (uint64_t *)&reg.rbp, nullptr },
         { REG, 0, 0, (uint64_t *)&reg.rax, nullptr },
         "mov -0x8(%rbp), %rax"
     },
@@ -89,8 +89,8 @@ inst_t program[15] = {
     },
     {
         MOV_REG_MEM,
-        { REG, 0, 0, (uint64_t *)reg.rax, nullptr },
-        { MM_IMM_REG, -0x8, 0, (uint64_t *)reg.rbp, nullptr },
+        { REG, 0, 0, (uint64_t *)&reg.rax, nullptr },
+        { MM_IMM_REG, -0x8, 0, (uint64_t *)&reg.rbp, nullptr },
         "mov %rax, -0x8(%rbp)"
     }
 };
