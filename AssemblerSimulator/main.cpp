@@ -1,76 +1,78 @@
 #include <iostream>
-#include "register.h"
-#include "mmu.h"
-#include "elf.h"
-#include "instruction.h"
-#include "dram.h"
+#include "cpu.h"
+#include "memory.h"
+#include "common.h"
+
+static void TestAddFunctionCallAndComputation();
 
 int main()
 {
-    //init
-    reg.rax = 0x12340000;
-    reg.rbx = 0x0;
-    reg.rcx = 0x555555557da0;
-    reg.rdx = 0xabcd;
-    reg.rsi = 0x7fffffffda48;
-    reg.rdi = 0x1;
-    reg.rbp = 0x7fffffffd930;
-    reg.rsp = 0x7fffffffd910;
-    reg.rip = (uint64_t)&program[11];
+    TestAddFunctionCallAndComputation();
 
-    /* 
-    `rbp` (high) represents the beginning related to the function, 
-    and `rsp` (low) represents the end related to the function.
-    .eg.
-    0x0000555555555192 <+4>:     push   %rbp
-    0x0000555555555193 <+5>:     mov    %rsp,%rbp
-    0x0000555555555196 <+8>:     sub    $0x20,%rsp
-    0x000055555555519a <+12>:    movq   $0x12340000,-0x18(%rbp)
-    0x00005555555551a2 <+20>:    movq   $0xabcd,-0x10(%rbp)
-    0x00005555555551aa <+28>:    mov    -0x10(%rbp),%rdx
-    0x00005555555551ae <+32>:    mov    -0x18(%rbp),%rax
-=>  0x00005555555551b2 <+36>:    mov    %rdx,%rsi
-    0x00005555555551b5 <+39>:    mov    %rax,%rdi
-    0x00005555555551b8 <+42>:    call   0x555555555169 <_Z3addmm>
-    0x00005555555551bd <+47>:    mov    %rax,-0x8(%rbp)
-    while $info r
-    rax            0x12340000          305397760
-    rbx            0x0                 0
-    rcx            0x555555557da0      93824992247200
-    rdx            0xabcd              43981
-    rsi            0x7fffffffda48      140737488345672
-    rdi            0x1                 1
-    rbp            0x7fffffffd930      0x7fffffffd930
-    rsp            0x7fffffffd910      0x7fffffffd910
-    */
-    write64bits_dram(va2pa(0x7fffffffd930), 0x1);               // rbp
-    write64bits_dram(va2pa(0x7fffffffd928), 0x7ffff7e93754);
-    write64bits_dram(va2pa(0x7fffffffd920), 0xabcd);
-    write64bits_dram(va2pa(0x7fffffffd918), 0x12340000);
-    write64bits_dram(va2pa(0x7fffffffd910), 0xf7f9c0c8);        // rsp
+    return 0;
+}
 
-    print_register();
-    print_stack();
+static void TestAddFunctionCallAndComputation() {
+    ACTIVE_CORE = 0x0;
+    core_t *ac = (core_t *)&cores[ACTIVE_CORE];
 
-    // run inst
-    for (uint i = 0; i < 15; ++i) {
+    // init state
+    ac->reg.rax = 0x12340000;
+    ac->reg.rbx = 0x0;
+    ac->reg.rcx = 0x555555557da0;
+    ac->reg.rdx = 0xabcd;
+    ac->reg.rsi = 0x7fffffffda48;
+    ac->reg.rdi = 0x1;
+    ac->reg.rbp = 0x7fffffffd930;
+    ac->reg.rsp = 0x7fffffffd910;
+
+    ac->CF = 0;
+    ac->ZF = 0;
+    ac->SF = 0;
+    ac->OF = 0;
+
+    write64bits_dram(va2pa(0x7fffffffd930, ac), 0x1, ac);               // rbp
+    write64bits_dram(va2pa(0x7fffffffd928, ac), 0x7ffff7e93754, ac);
+    write64bits_dram(va2pa(0x7fffffffd920, ac), 0xabcd, ac);
+    write64bits_dram(va2pa(0x7fffffffd918, ac), 0x12340000, ac);
+    write64bits_dram(va2pa(0x7fffffffd910, ac), 0xf7f9c0c8, ac);        // rsp
+
+    char assembly[15][MAX_INSTRUCTION_CHAR] = {
+        "push   %rbp",
+        "mov    %rsp,%rbp",
+        "mov    %rdi,-0x18(%rbp)",
+        "mov    %rsi,-0x20(%rbp)",
+        "mov    -0x18(%rbp),%rdx",
+        "mov    -0x20(%rbp),%rax",
+        "add    %rdx,%rax",
+        "mov    %rax,-0x8(%rbp)",
+        "mov    -0x8(%rbp),%rax",
+        "pop    %rbp",
+        "retq",
+        "mov    %rdx,%rsi",
+        "mov    %rax,%rdi",
+        "callq  0",
+        "mov    %rax,-0x8(%rbp)",
+    };
+    ac->rip = (uint64_t)&assembly[11];
+    sprintf(assembly[13], "callq  $%p", &assembly[0]);
+
+    for (int i = 0; i < 15; ++i) {
+        instruction_cycle(ac);
+        print_register(ac);
+        print_stack(ac);
         printf("\n");
-        instruction_cycle();
-        print_register();
-        print_stack();
     }
 
-    // verify
-    printf("[All done]\n");
-    bool match = 1;
-    match = match && (reg.rax == 0x1234abcd);
-    match = match && (reg.rbx == 0x0);
-    match = match && (reg.rcx == 0x555555557da0);
-    match = match && (reg.rdx == 0x12340000);
-    match = match && (reg.rsi == 0xabcd);
-    match = match && (reg.rdi == 0x12340000);
-    match = match && (reg.rbp == 0x7fffffffd930);
-    match = match && (reg.rsp == 0x7fffffffd910);
+    int match = 1;
+    match = match && (ac->reg.rax == 0x1234abcd);
+    match = match && (ac->reg.rbx == 0x0);
+    match = match && (ac->reg.rcx == 0x555555557da0);
+    match = match && (ac->reg.rdx == 0x12340000);
+    match = match && (ac->reg.rsi == 0xabcd);
+    match = match && (ac->reg.rdi == 0x12340000);
+    match = match && (ac->reg.rbp == 0x7fffffffd930);
+    match = match && (ac->reg.rsp == 0x7fffffffd910);
 
     if (match) {
         std::cout << "register match" << std::endl;
@@ -78,17 +80,15 @@ int main()
         std::cout << "register mismatch" << std::endl;
     }
 
-    match = match && (read64bits_dram(va2pa(0x7fffffffd930)) == 0x1);                // rbp
-    match = match && (read64bits_dram(va2pa(0x7fffffffd928)) == 0x1234abcd);
-    match = match && (read64bits_dram(va2pa(0x7fffffffd920)) == 0xabcd);
-    match = match && (read64bits_dram(va2pa(0x7fffffffd918)) == 0x12340000);
-    match = match && (read64bits_dram(va2pa(0x7fffffffd910)) == 0xf7f9c0c8);         // rsp
+    match = match && (read64bits_dram(va2pa(0x7fffffffd930, ac), ac) == 0x1);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd928, ac), ac) == 0x7ffff7e93754);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd920, ac), ac) == 0xabcd);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd918, ac), ac) == 0x12340000);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd910, ac), ac) == 0xf7f9c0c8);
 
     if (match) {
         std::cout << "memory match" << std::endl;
     } else {
         std::cout << "memory mismatch" << std::endl;
     }
-
-    return 0;
 }
