@@ -22,6 +22,10 @@ using std::uint64_t;
 // use sram cache for memory access
 #define DEBUG_ENABLE_SRAM_CACHE 0
 
+// printf wrapper
 uint64_t debug_printf(uint64_t openSet, const char *format, ...);
+// type converter
+// convert string dec or hex to the integer bitmap
+uint64_t string2uint(const char *str, int start = 0, int end = -1);
 
 #endif

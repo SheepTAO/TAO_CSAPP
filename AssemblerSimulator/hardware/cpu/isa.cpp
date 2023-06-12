@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <cstring>
 #include "cpu.h"
 #include "memory.h"
 #include "common.h"
@@ -61,7 +62,7 @@ typedef struct INST_STRUCT {
 
 // functions to map the string assembly code to inst_t instance
 static void parse_instruction(const char *str, inst_t *inst, core_t *cr);
-static void parse_operand(const char *str, inst_t *od, core_t *cr);
+static void parse_operand(const char *str, od_t *od, core_t *cr);
 static uint64_t decode_operand(od_t *od);
 
 // interpret the operand
@@ -117,7 +118,32 @@ static void parse_instruction(const char *str, inst_t *inst, core_t *cr) {
 
 }
 
-static void parse_operand(const char *str, inst_t *od, core_t *cr) {
+static void parse_operand(const char *str, od_t *od, core_t *cr) {
+    // str: assembly code string, e.g. mov %rsp,%rbp
+    // od: pointer to the address to store the parsed operand
+    // cr: active core the processor
+    od->type = EMPTY;
+    od->imm = 0;
+    od->reg1 = 0;
+    od->reg2 = 0;
+    od->scal = 0;
+
+    int str_len = strlen(str);
+    if (str_len == 0) {
+        return;
+    }
+
+    if (str[0] == '$') {
+        // immediate operand
+        od->type = IMM;
+        // try to parse the immediate number
+        od->imm = string2uint(str, 1, -1);
+    } else if (str[0] == '%') {
+        // register
+
+    } else {
+        // memory access
+    }
 
 }
 
@@ -296,10 +322,10 @@ void instruction_cycle(core_t *cr) {
     printf("\t%s\n", inst_str);
     parse_instruction(inst_str, &inst, cr);
 
-    // // EXECUTE: get the function pointer or handler by the operator
-    // handler_t handler = handler_table[inst.op];
-    // // update CPU and memory according the instruction
-    // handler(&(inst.src), &(inst.dst), cr);
+    // EXECUTE: get the function pointer or handler by the operator
+    handler_t handler = handler_table[inst.op];
+    // update CPU and memory according the instruction
+    handler(&(inst.src), &(inst.dst), cr);
 }
 
 void print_register(core_t *cr) {
