@@ -4,11 +4,12 @@
 #include "common.h"
 
 static void TestAddFunctionCallAndComputation();
-static void TestString2Uint();
+void TestString2Uint();
+void TestParsingOperand();
 
 int main()
 {
-    TestString2Uint();
+    TestParsingOperand();
 
     return 0;
 }
@@ -27,10 +28,7 @@ static void TestAddFunctionCallAndComputation() {
     ac->reg.rbp = 0x7fffffffd930;
     ac->reg.rsp = 0x7fffffffd910;
 
-    ac->CF = 0;
-    ac->ZF = 0;
-    ac->SF = 0;
-    ac->OF = 0;
+    ac->flag.__cpu_flag_value = 0;
 
     write64bits_dram(va2pa(0x7fffffffd930, ac), 0x1, ac);               // rbp
     write64bits_dram(va2pa(0x7fffffffd928, ac), 0x7ffff7e93754, ac);
@@ -91,26 +89,5 @@ static void TestAddFunctionCallAndComputation() {
         std::cout << "memory match" << std::endl;
     } else {
         std::cout << "memory mismatch" << std::endl;
-    }
-}
-
-static void TestString2Uint() {
-    const char *nums[12] = {
-        "0",
-        "-0",
-        "0x0",
-        "1234",
-        "0x1234",
-        "0xabcd",
-        "-0xabcd",
-        "-1234",
-        "2147483647",
-        "-2147483648",
-        "0x8000000000000000",
-        "0xffffffffffffffff",
-    };
-
-    for (int i = 0; i < 12; ++i) {
-        printf("%s => %lx\n", nums[i], string2uint(nums[i]));
     }
 }

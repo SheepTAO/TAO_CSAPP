@@ -7,7 +7,7 @@
 /*          registers               */
 /*==================================*/
 
-typedef struct REGISTER_STRUCT {
+struct reg_t {
     // return value
     union {
         uint64_t rax;
@@ -144,58 +144,71 @@ typedef struct REGISTER_STRUCT {
         uint16_t r15w;
         uint8_t  r15b;
     };
-} reg_t;
+};
+
+/*==================================*/
+/*          cpu flags               */
+/*==================================*/
+
+// condition code flags of most recent (latest) operation
+// condition codes will only be set by the following integer arithmetic instructions
+
+/*  integer arithmetic instructions
+        inc     increment 1
+        dec     decrement 1
+        neg     negate
+        not     complement
+        ---------------------------
+        add     add
+        sub     subtract
+        imul    multiply
+        xor     exclusive or
+        or      or
+        and     and
+        ---------------------------
+        sal     left shift
+        shl     left shift (same as sal)
+        sar     arithmetic right shift
+        shr     logical right shift
+*/
+
+/*   comparison and test instructions
+        cmp     compare
+        test    test
+*/
+
+// 64 bits = 4 * 16 bits
+union cpu_flag_t {
+    uint64_t __cpu_flag_value;
+    struct {
+        // carry flag: detect overflow for unsigned operations
+        uint16_t CF;
+        // zero flag: result is zero
+        uint16_t ZF;
+        // sign flag: result is negative (highest bit)
+        uint16_t SF;
+        // overflow flag: detect overflow for signed operations
+        uint16_t OF;
+    };
+};
 
 /*==================================*/
 /*          cpu core                */
 /*==================================*/
 
-typedef struct CORE_STRUCT {
+struct core_t {
     // program counter or instruction pointer
     union {
         uint64_t rip;
         uint32_t eip;
     };
 
-    // condition code flags of most recent (latest) operation
-    // condition codes will only be set by the following integer arithmetic instructions
-
-    /*  integer arithmetic instructions
-            inc     increment 1
-            dec     decrement 1
-            neg     negate
-            not     complement
-            ---------------------------
-            add     add
-            sub     subtract
-            imul    multiply
-            xor     exclusive or
-            or      or
-            and     and
-            ---------------------------
-            sal     left shift
-            shl     left shift (same as sal)
-            sar     arithmetic right shift
-            shr     logical right shift
-    */
-
-    /*   comparison and test instructions
-            cmp     compare
-            test    test
-    */
-
-    // carry flag: detect overflow for unsigned operations
-    uint32_t CF;
-    // zero flag: result is zero
-    uint32_t ZF;
-    // sign flag: result is negative (highest bit)
-    uint32_t SF;
-    // overflow flag: detect overflow for signed operations
-    uint32_t OF;
+    // cpu flags
+    cpu_flag_t flag;
 
     // register files
     reg_t reg;
-} core_t;
+};
 
 // define cpu core array to support core level parallelism
 #define NUM_CORES 4
