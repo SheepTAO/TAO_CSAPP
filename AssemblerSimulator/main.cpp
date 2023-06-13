@@ -6,10 +6,11 @@
 static void TestAddFunctionCallAndComputation();
 void TestString2Uint();
 void TestParsingOperand();
+void TestParsingInstruction();
 
 int main()
 {
-    TestParsingOperand();
+    TestAddFunctionCallAndComputation();
 
     return 0;
 }
@@ -58,9 +59,9 @@ static void TestAddFunctionCallAndComputation() {
 
     for (int i = 0; i < 15; ++i) {
         instruction_cycle(ac);
-        print_register(ac);
-        print_stack(ac);
-        printf("\n");
+        // print_register(ac);
+        // print_stack(ac);
+        // printf("\n");
     }
 
     int match = 1;
