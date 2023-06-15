@@ -6,6 +6,8 @@
 #include "memory.h"
 #include "common.h"
 
+#define MAX_INSTRUCTION_EXE 64
+
 core_t cores[NUM_CORES];
 uint64_t ACTIVE_CORE;
 uint8_t pm[PHYSICAL_MEMORY_SPACE];
@@ -46,8 +48,9 @@ enum od_type_t {
 
 struct od_t {
     od_type_t   type;   // IMM, REG, MEM
-    int64_t     imm;    // immediate number
+    uint64_t     imm;   // immediate number
     uint64_t    scal;   // scale number to register 2
+    // reg1, reg2 is the address of cr.reg.xxx
     uint64_t    reg1;   // main register
     uint64_t    reg2;   // minor register
 };
@@ -69,51 +72,51 @@ static uint64_t decode_operand(od_t *od);
 
 // interpret the operand
 static uint64_t decode_operand(od_t *od) {
-    // access memory: return the virtual address
-    uint64_t vaddr = 0;
-
-    switch (od->type) {
-    case IMM:
+    if (od->type == EMPTY) {
+        return 0;
+    } else if (od->type == IMM) {
         // immediate signed number can be negative: convert to bitmap
-        vaddr = (uint64_t)&od->imm;
-        break;
-    case REG:
+        return od->imm;
+    } else if (od->type == REG) {
         // default main register
-        vaddr = (uint64_t)&od->reg1;
-        break;
-    case EMPTY:
-        break;
-    case MEM_IMM:
-        vaddr = od->imm;
-        break;
-    case MEM_REG1:
-        vaddr = *(uint64_t *)od->reg1;
-        break;
-    case MEM_IMM_REG1:
-        vaddr = od->imm + *(uint64_t *)od->reg1;
-        break;
-    case MEM_REG1_REG2:
-        vaddr = *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2;
-        break;
-    case MEM_IMM_REG1_REG2:
-        vaddr = od->imm + *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2;
-        break;
-    case MEM_REG2_SCAL:
-        vaddr = *(uint64_t *)od->reg2 * od->scal;
-        break;
-    case MEM_IMM_REG2_SCAL:
-        vaddr = od->imm + *(uint64_t *)od->reg2 * od->scal;
-    case MEM_REG1_REG2_SCAL:
-        vaddr = *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2 * od->scal;
-        break;
-    case MEM_IMM_REG1_REG2_SCAL:
-        vaddr = od->imm + *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2 * od->scal;
-        break;
-    default:
-        break;
-    }
+        return od->reg1;
+    } else {
+        // access memory: return the virtual address
+        uint64_t vaddr = 0;
 
-    return vaddr;
+        switch (od->type) {
+        case MEM_IMM:
+            vaddr = od->imm;
+            break;
+        case MEM_REG1:
+            vaddr = *(uint64_t *)od->reg1;
+            break;
+        case MEM_IMM_REG1:
+            vaddr = od->imm + *(uint64_t *)od->reg1;
+            break;
+        case MEM_REG1_REG2:
+            vaddr = *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2;
+            break;
+        case MEM_IMM_REG1_REG2:
+            vaddr = od->imm + *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2;
+            break;
+        case MEM_REG2_SCAL:
+            vaddr = *(uint64_t *)od->reg2 * od->scal;
+            break;
+        case MEM_IMM_REG2_SCAL:
+            vaddr = od->imm + *(uint64_t *)od->reg2 * od->scal;
+        case MEM_REG1_REG2_SCAL:
+            vaddr = *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2 * od->scal;
+            break;
+        case MEM_IMM_REG1_REG2_SCAL:
+            vaddr = od->imm + *(uint64_t *)od->reg1 + *(uint64_t *)od->reg2 * od->scal;
+            break;
+        default:
+            break;
+        }
+
+        return vaddr;
+    }
 }
 
 // Key-value pair mapping template
@@ -495,9 +498,9 @@ static void mov_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
         // dst: register
         *(uint64_t *)dst = read64bits_dram(va2pa(src, cr), cr);
     } else if (src_od->type == IMM && dst_od->type == REG) {
-        // src: immediate number (uint64_t bit map)
+        // src: immediate number (uint64_t bitmap)
         // dst: register
-        *(uint64_t *)dst = *(uint64_t *)src;
+        *(uint64_t *)dst = src;
     }
 
     next_rip(cr);
@@ -531,7 +534,13 @@ static void pop_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
 }
 
 static void leave_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
-
+    // movq %rbp,%rsp
+    cr->reg.rsp = cr->reg.rbp;
+    // popq %rbp
+    cr->reg.rbp = read64bits_dram(va2pa(cr->reg.rsp, cr), cr);
+    cr->reg.rsp += 8;
+    next_rip(cr);
+    cr->flag.__cpu_flag_value = 0;
 }
 
 static void call_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
@@ -542,7 +551,7 @@ static void call_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
     next_rip(cr);
     cr->reg.rsp -= 8;
     write64bits_dram(va2pa(cr->reg.rsp, cr), cr->rip, cr);
-    cr->rip = *(uint64_t *)src;
+    cr->rip = src;
     cr->flag.__cpu_flag_value = 0;
 }
 
@@ -561,36 +570,144 @@ static void add_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
     if (src_od->type == REG && dst_od->type == REG) {
         // src: register
         // dst: register
-        *(uint64_t *)src += *(uint64_t *)dst;
+        uint64_t val = *(uint64_t *)src + *(uint64_t *)dst;
 
         // set condition flags
+        cr->flag.CF = val < *(uint64_t *)src;
+        cr->flag.ZF = val == 0;
+        cr->flag.SF = val >> 63 & 0x1;
+        cr->flag.OF = ((int64_t)*(uint64_t *)src < 0 && (int64_t)*(uint64_t *)dst < 0) && 
+            ((int64_t)val < 0 ^ (int64_t)*(uint64_t *)src < 0);
 
+        // update register
+        *(uint64_t *)dst = val;
+        next_rip(cr);
+    } else if (src_od->type == IMM && dst_od->type == REG) {
+        // src: immediate number
+        // dst: register
+        uint64_t val = *(uint64_t *)dst + src;
+
+        // set condition flags
+        cr->flag.CF = val < src;
+        cr->flag.ZF = val == 0;
+        cr->flag.SF = val >> 63 & 0x1;
+        cr->flag.OF = ((int64_t)src < 0 && (int64_t)*(uint64_t *)dst < 0) && 
+            ((int64_t)val < 0 ^ (int64_t)src < 0);
+        
+        // update register
+        *(uint64_t *)dst = val;
         next_rip(cr);
     }
 }
 
 static void sub_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
+    uint64_t src = decode_operand(src_od);
+    uint64_t dst = decode_operand(dst_od);
 
+    if (src_od->type == REG && dst_od->type == REG) {
+        // src: register
+        // dst: register
+        uint64_t val = *(uint64_t *)dst + ~(*(uint64_t *)src) + 1;
+
+        cr->flag.CF = val > *(uint64_t *)src;
+        cr->flag.ZF = val == 0;
+        cr->flag.SF = val >> 63 & 0x1;
+        cr->flag.OF = ((int64_t)*(uint64_t *)src > 0 && (int64_t)*(uint64_t *)dst < 0) && 
+            ((int64_t)val < 0 && (int64_t)*(uint64_t *)dst < 0);
+        
+        *(uint64_t *)dst = val;
+        next_rip(cr);
+        
+    } else if (src_od->type == IMM && dst_od->type == REG) {
+        // src: immediate number
+        // dst: register
+        uint64_t val = *(uint64_t *)dst + ~src + 1;
+
+        cr->flag.CF = val > src;
+        cr->flag.ZF = val == 0;
+        cr->flag.SF = val >> 63 & 0x1;
+        cr->flag.OF = ((int64_t)src > 0 && (int64_t)*(uint64_t *)dst < 0) && 
+            ((int64_t)val < 0 && (int64_t)dst < 0);
+
+        *(uint64_t *)dst = val;
+        next_rip(cr);
+    }
 }
 
 static void cmp_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
+    uint64_t src = decode_operand(src_od);
+    uint64_t dst = decode_operand(dst_od);
 
+    if (src_od->type == REG && dst_od->type == REG) {
+        // src: register
+        // dst: register
+        uint64_t val = *(uint64_t *)dst + ~(*(uint64_t *)src) + 1;
+
+        cr->flag.CF = val > *(uint64_t *)src;
+        cr->flag.ZF = val == 0;
+        cr->flag.SF = val >> 63 & 0x1;
+        cr->flag.OF = ((int64_t)*(uint64_t *)src > 0 && (int64_t)*(uint64_t *)dst < 0) && 
+            ((int64_t)val < 0 && (int64_t)*(uint64_t *)dst < 0);
+        
+        next_rip(cr);
+        
+    } else if (src_od->type == IMM && dst_od->type == REG) {
+        // src: immediate number
+        // dst: register
+        uint64_t val = *(uint64_t *)dst + ~src + 1;
+
+        cr->flag.CF = val > src;
+        cr->flag.ZF = val == 0;
+        cr->flag.SF = val >> 63 & 0x1;
+        cr->flag.OF = ((int64_t)src > 0 && (int64_t)*(uint64_t *)dst < 0) && 
+            ((int64_t)val < 0 && (int64_t)dst < 0);
+
+        next_rip(cr);
+    } else if (src_od->type == IMM && dst_od->type >= MEM_IMM) {
+        // src: immediate number
+        // dst: memory access
+        dst = read64bits_dram(va2pa(dst, cr), cr);
+        uint64_t val = dst + ~src + 1;
+
+        cr->flag.CF = val > src;
+        cr->flag.ZF = val == 0;
+        cr->flag.SF = val >> 63 & 0x1;
+        cr->flag.OF = ((int64_t)src > 0 && (int64_t)dst < 0) && 
+            ((int64_t)val < 0 && (int64_t)dst < 0);
+
+        next_rip(cr);
+    }
 }
 
 static void jne_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
+    uint64_t src = decode_operand(src_od);
 
+    if (src_od->type == MEM_IMM) {
+        if (!cr->flag.ZF) {
+            cr->rip = src;
+        } else {
+            next_rip(cr);
+        }
+    }
+    cr->flag.__cpu_flag_value = 0;
 }
 
 static void jmp_handler(od_t *src_od, od_t *dst_od, core_t *cr) {
+    uint64_t src = decode_operand(src_od);
 
+    if (src_od->type == MEM_IMM) {
+        cr->rip = src;
+    }
+    cr->flag.__cpu_flag_value = 0;
 }
 
 
 // instruction cycle is implemented in CPU
 void instruction_cycle(core_t *cr) {
     // [FETCH]: get the instruction string by program counter
-    const char *inst_str = (const char *)cr->rip;
-    debug_printf(DEBUG_INSTRUCTIONCYCLE, "0x%8lx\t%s\n", cr->rip, inst_str);
+    char inst_str[MAX_INSTRUCTION_CHAR];
+    readinst_dram(va2pa(cr->rip, cr), inst_str, cr);
+    debug_printf(DEBUG_INSTRUCTIONCYCLE, "0x%08lx\t%s\n", cr->rip, inst_str);
 
     // [DECODE]: decode the run-time instruction operands
     inst_t inst;
@@ -713,5 +830,239 @@ void TestParsingInstruction() {
     inst_t inst;
     for (int i = 0; i < 15; ++i) {
         parse_instruction(assembly[i], &inst, ac);
+    }
+}
+
+void TestAddFunctionCallAndComputation() {
+    ACTIVE_CORE = 0x0;
+    core_t *ac = (core_t *)&cores[ACTIVE_CORE];
+
+    // init state
+    ac->reg.rax = 0x12340000;
+    ac->reg.rbx = 0x0;
+    ac->reg.rcx = 0x555555557da0;
+    ac->reg.rdx = 0xabcd;
+    ac->reg.rsi = 0x7fffffffda48;
+    ac->reg.rdi = 0x1;
+    ac->reg.rbp = 0x7fffffffd930;
+    ac->reg.rsp = 0x7fffffffd910;
+
+    ac->flag.__cpu_flag_value = 0;
+
+    write64bits_dram(va2pa(0x7fffffffd930, ac), 0x1, ac);               // rbp
+    write64bits_dram(va2pa(0x7fffffffd928, ac), 0x7ffff7e93754, ac);
+    write64bits_dram(va2pa(0x7fffffffd920, ac), 0xabcd, ac);
+    write64bits_dram(va2pa(0x7fffffffd918, ac), 0x12340000, ac);
+    write64bits_dram(va2pa(0x7fffffffd910, ac), 0xf7f9c0c8, ac);        // rsp
+
+    char assembly[15][MAX_INSTRUCTION_CHAR] = {
+        "push   %rbp",                      // 0
+        "mov    %rsp,%rbp",                 // 1
+        "mov    %rdi,-0x18(%rbp)",          // 2
+        "mov    %rsi,-0x20(%rbp)",          // 3
+        "mov    -0x18(%rbp),%rdx",          // 4
+        "mov    -0x20(%rbp),%rax",          // 5
+        "add    %rdx,%rax",                 // 6
+        "mov    %rax,-0x8(%rbp)",           // 7
+        "mov    -0x8(%rbp),%rax",           // 8
+        "pop    %rbp",                      // 9
+        "retq",                             // 10
+        "mov    %rdx,%rsi",                 // 11
+        "mov    %rax,%rdi",                 // 12
+        "callq  0x400000",                         // 13
+        "mov    %rax,-0x8(%rbp)",           // 14
+    };
+
+    for (int i = 0; i < 15; ++i) {
+        writeinst_darm(va2pa(0x400000 + 0x40 * i, ac), assembly[i], ac);
+    }
+    ac->rip = 0x400000 + 0x40 * 11;
+    printf("%lx\n", ac->rip);
+    printf("%lx\n", MAX_INSTRUCTION_CHAR * sizeof(char) * 11 + 0x400000);
+
+    for (int i = 0; i < 15; ++i) {
+        instruction_cycle(ac);
+        print_register(ac);
+        print_stack(ac);
+        printf("\n");
+    }
+
+    int match = 1;
+    match = match && (ac->reg.rax == 0x1234abcd);
+    match = match && (ac->reg.rbx == 0x0);
+    match = match && (ac->reg.rcx == 0x555555557da0);
+    match = match && (ac->reg.rdx == 0x12340000);
+    match = match && (ac->reg.rsi == 0xabcd);
+    match = match && (ac->reg.rdi == 0x12340000);
+    match = match && (ac->reg.rbp == 0x7fffffffd930);
+    match = match && (ac->reg.rsp == 0x7fffffffd910);
+
+    if (match) {
+        printf("register match\n");
+    } else {
+        printf("register mismatch\n");
+    }
+
+    match = match && (read64bits_dram(va2pa(0x7fffffffd930, ac), ac) == 0x1);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd928, ac), ac) == 0x1234abcd);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd920, ac), ac) == 0xabcd);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd918, ac), ac) == 0x12340000);
+    match = match && (read64bits_dram(va2pa(0x7fffffffd910, ac), ac) == 0xf7f9c0c8);
+
+    if (match) {
+        printf("memory match\n");
+    } else {
+        printf("memory mismatch\n");
+    }
+}
+
+void TestSumRecursiveCondition() {
+    ACTIVE_CORE = 0x0;
+    core_t *ac = &cores[ACTIVE_CORE];
+
+    /*
+    `rbp` (high address) represents the beginning related to the function, 
+    and `rsp` (low address) represents the end related to the function.
+
+    $(gdb) b main
+    $(gdb) run
+    $(gdb) disas
+        0x0000555555555160 <+0>:     endbr64
+        0x0000555555555164 <+4>:     push   %rbp
+        0x0000555555555165 <+5>:     mov    %rsp,%rbp
+        0x0000555555555168 <+8>:     sub    $0x10,%rsp
+    =>  0x000055555555516c <+12>:    mov    $0x3,%edi
+        0x0000555555555171 <+17>:    call   0x555555555129 <_Z3summ>
+        0x0000555555555176 <+22>:    mov    %rax,-0x8(%rbp)
+    $(gdb) info r
+        rax            0x555555555160      93824992235872
+        rbx            0x0                 0
+        rcx            0x555555557df8      93824992247288
+        rdx            0x7fffffffdee8      140737488346856
+        rsi            0x7fffffffded8      140737488346840
+        rdi            0x1                 1
+        rbp            0x7fffffffddc0      0x7fffffffddc0
+        rsp            0x7fffffffddb0      0x7fffffffddb0
+        ...
+    $(gdb) x/10 0x7fffffffddb0
+        0x7fffffffddb0: 0x00001000      0x00000000      0x55555040     0x00005555
+        0x7fffffffddc0: 0x00000001      0x00000000      0xf7d9fd90     0x00007fff
+        0x7fffffffddd0: 0x00000000      0x00000000
+    $(gdb) si 2
+    $(gdb) disas
+    =>  0x0000555555555129 <+0>:     endbr64
+        0x000055555555512d <+4>:     push   %rbp
+        0x000055555555512e <+5>:     mov    %rsp,%rbp
+        0x0000555555555131 <+8>:     sub    $0x10,%rsp
+        0x0000555555555135 <+12>:    mov    %rdi,-0x8(%rbp)
+        0x0000555555555139 <+16>:    cmpq   $0x0,-0x8(%rbp)
+        0x000055555555513e <+21>:    jne    0x555555555147 <_Z3summ+30>
+        0x0000555555555140 <+23>:    mov    $0x0,%eax
+        0x0000555555555145 <+28>:    jmp    0x55555555515e <_Z3summ+53>
+        0x0000555555555147 <+30>:    mov    -0x8(%rbp),%rax
+        0x000055555555514b <+34>:    sub    $0x1,%rax
+        0x000055555555514f <+38>:    mov    %rax,%rdi
+        0x0000555555555152 <+41>:    call   0x555555555129 <_Z3summ>
+        0x0000555555555157 <+46>:    mov    -0x8(%rbp),%rdx
+        0x000055555555515b <+50>:    add    %rdx,%rax
+        0x000055555555515e <+53>:    leave
+        0x000055555555515f <+54>:    ret
+    $(gdb) fin
+    $(gdb) disas
+        0x0000555555555171 <+17>:    call   0x555555555129 <_Z3summ>
+    =>  0x0000555555555176 <+22>:    mov    %rax,-0x8(%rbp)
+        0x000055555555517a <+26>:    mov    $0x0,%eax
+        0x000055555555517f <+31>:    leave
+        0x0000555555555180 <+32>:    ret
+    $(gdb) info r
+        rax            0x6                 6
+        rbx            0x0                 0
+        rcx            0x555555557df8      93824992247288
+        rdx            0x3                 3
+        rsi            0x7fffffffded8      140737488346840
+        rdi            0x0                 0
+        rbp            0x7fffffffddc0      0x7fffffffddc0
+        rsp            0x7fffffffddb0      0x7fffffffddb0
+        ...
+    $(gdb) x/6 $rsp
+        0x7fffffffddb0: 0x00001000      0x00000000      0x55555040     0x00005555
+        0x7fffffffddc0: 0x00000001      0x00000000
+    */
+
+    char assembly[19][MAX_INSTRUCTION_CHAR] = {
+        "push   %rbp",                  // 0
+        "mov    %rsp,%rbp",             // 1
+        "sub    $0x10,%rsp",            // 2
+        "mov    %rdi,-0x8(%rbp)",       // 3
+        "cmpq   $0x0,-0x8(%rbp)",       // 4
+        "jne    0x400200",              // 5: jump to 8
+        "mov    $0x0,%eax",             // 6
+        "jmp    0x400380",              // 7: jump to 14
+        "mov    -0x8(%rbp),%rax",       // 8
+        "sub    $0x1,%rax",             // 9
+        "mov    %rax,%rdi",             // 10
+        "call   0x400000",              // 11
+        "mov    -0x8(%rbp),%rdx",       // 12
+        "add    %rdx,%rax",             // 13
+        "leave",                        // 14
+        "ret",                          // 15
+        "mov    $0x3,%edi",             // 16
+        "call   0x400000",              // 17
+        "mov    %rax,-0x8(%rbp)",       // 18
+    };
+
+    // copy code to physical memory
+    for (int i = 0; i < 19; ++i) {
+        writeinst_darm(va2pa(i * 0x40 + 0x400000, ac), assembly[i], ac);
+    }
+
+    // initialize register and memory
+    ac->reg.rax = 0x555555555160;
+    ac->reg.rbx = 0x0;
+    ac->reg.rcx = 0x555555557df8;
+    ac->reg.rdx = 0x7fffffffdee8;
+    ac->reg.rsi = 0x7fffffffded8;
+    ac->reg.rdi = 0x1;
+    ac->reg.rbp = 0x7fffffffddc0;
+    ac->reg.rsp = 0x7fffffffddb0;
+    ac->rip = MAX_INSTRUCTION_CHAR * sizeof(char) * 16 + 0x400000;
+    ac->flag.__cpu_flag_value = 0;
+
+    write64bits_dram(va2pa(0x7fffffffddc0, ac), 0x00000001, ac);            // rbp
+    write64bits_dram(va2pa(0x7fffffffddb8, ac), 0x555555555040, ac);
+    write64bits_dram(va2pa(0x7fffffffddb0, ac), 0x00001000, ac);            // rsp
+
+    for (int i = 0; i < MAX_INSTRUCTION_EXE && ac->rip <= 18 * 0x40 + 0x400000; ++i) {
+        instruction_cycle(ac);
+        print_register(ac);
+        print_stack(ac);
+        printf("\n");
+    }
+
+    bool match = true;
+
+    match = match && ac->reg.rax == 0x6;
+    match = match && ac->reg.rbx == 0x0;
+    match = match && ac->reg.rcx == 0x555555557df8;
+    match = match && ac->reg.rdx == 0x3;
+    match = match && ac->reg.rsi == 0x7fffffffded8;
+    match = match && ac->reg.rdi == 0x0;
+    match = match && ac->reg.rbp == 0x7fffffffddc0;
+    match = match && ac->reg.rsp == 0x7fffffffddb0;
+    
+    if (match) {
+        printf("register match\n");
+    } else {
+        printf("register mismatch\n");
+    }
+
+    match = match && read64bits_dram(va2pa(0x7fffffffddc0, ac), ac) == 0x00000001;
+    match = match && read64bits_dram(va2pa(0x7fffffffddb8, ac), ac) == 0x00000006;
+    match = match && read64bits_dram(va2pa(0x7fffffffddb0, ac), ac) == 0x00001000;
+
+    if (match) {
+        printf("memory match\n");
+    } else {
+        printf("memory mismatch\n");
     }
 }
